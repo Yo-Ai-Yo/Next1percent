@@ -84,11 +84,13 @@
 
     const App = () => {
       const [chatMessages, setChatMessages] = useState([]);
+      const [chatHistory, setChatHistory] = useState([]);
       const [userInput, setUserInput] = useState("");
       const [dailyTask, setDailyTask] = useState("");
       const [taskFeedback, setTaskFeedback] = useState("");
       const [progressData, setProgressData] = useState({ completed: 0, total: 0, streak: 0 });
       const [showProgress, setShowProgress] = useState(false);
+      const [showChatHistory, setShowChatHistory] = useState(false);
       const [sidebarOpen, setSidebarOpen] = useState(false);
       const [darkMode, setDarkMode] = useState(false);
       const [error, setError] = useState("");
@@ -96,10 +98,11 @@
       const chartRef = useRef(null);
       const canvasRef = useRef(null);
 
-      // Load user profile and progress from localStorage on mount
+      // Load user profile, progress, and chat history from localStorage on mount
       useEffect(() => {
         const savedProfile = localStorage.getItem("next1Profile");
         const savedProgress = localStorage.getItem("next1Progress");
+        const savedChatHistory = localStorage.getItem("next1ChatHistory");
         if (savedProfile) {
           setUserProfile(JSON.parse(savedProfile));
           setChatMessages([{ sender: "AI", message: "Welcome back! Let's continue your journey to improve 1% each day. What would you like to do?" }]);
@@ -109,15 +112,19 @@
         if (savedProgress) {
           setProgressData(JSON.parse(savedProgress));
         }
+        if (savedChatHistory) {
+          setChatHistory(JSON.parse(savedChatHistory));
+        }
       }, []);
 
-      // Save user profile and progress to localStorage
+      // Save user profile, progress, and chat history to localStorage
       useEffect(() => {
         if (userProfile) {
           localStorage.setItem("next1Profile", JSON.stringify(userProfile));
         }
         localStorage.setItem("next1Progress", JSON.stringify(progressData));
-      }, [userProfile, progressData]);
+        localStorage.setItem("next1ChatHistory", JSON.stringify(chatHistory));
+      }, [userProfile, progressData, chatHistory]);
 
       // Toggle dark mode
       useEffect(() => {
@@ -207,17 +214,33 @@
         setError("");
         const newMessages = [...chatMessages, { sender: "User", message: userInput }];
         setChatMessages(newMessages);
-        
+
+        // Save chat messages to history with timestamp
+        const timestamp = new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
+        setChatHistory([...chatHistory, { timestamp: timestamp, messages: newMessages }]);
+
         if (!userProfile) {
           // Onboarding phase
           const prompt = `Act as a motivational coach for the Next1% app, helping users improve 1% each day. The user has responded with: "${userInput}". Based on this, suggest goals and interests (e.g., fitness, learning, productivity) and ask follow-up questions to refine their preferences. Respond in an encouraging and empathetic tone.`;
           const aiResponse = await callAwanApi(prompt);
           if (aiResponse) {
-            setChatMessages([...newMessages, { sender: "AI", message: aiResponse }]);
+            const updatedMessages = [...newMessages, { sender: "AI", message: aiResponse }];
+            setChatMessages(updatedMessages);
+            setChatHistory(prev => {
+              const updatedHistory = [...prev];
+              updatedHistory[updatedHistory.length - 1] = { timestamp: timestamp, messages: updatedMessages };
+              return updatedHistory;
+            });
             // Assume the user completes onboarding after a few exchanges
             if (newMessages.length >= 3) {
               setUserProfile({ goals: userInput });
-              setChatMessages([...newMessages, { sender: "AI", message: "Great! I've saved your goals. Let's start with your first daily task. You can generate a task from the 'Daily Task' section in the sidebar." }]);
+              const finalMessages = [...updatedMessages, { sender: "AI", message: "Great! I've saved your goals. Let's start with your first daily task. You can generate a task from the 'Daily Task' section in the sidebar." }];
+              setChatMessages(finalMessages);
+              setChatHistory(prev => {
+                const updatedHistory = [...prev];
+                updatedHistory[updatedHistory.length - 1] = { timestamp: timestamp, messages: finalMessages };
+                return updatedHistory;
+              });
             }
           }
         } else {
@@ -225,7 +248,13 @@
           const prompt = `Act as a motivational coach for the Next1% app. The user has a profile with goals: "${userProfile.goals}". They said: "${userInput}". Respond with encouragement, advice, or a suggestion to help them improve 1% today.`;
           const aiResponse = await callAwanApi(prompt);
           if (aiResponse) {
-            setChatMessages([...newMessages, { sender: "AI", message: aiResponse }]);
+            const updatedMessages = [...newMessages, { sender: "AI", message: aiResponse }];
+            setChatMessages(updatedMessages);
+            setChatHistory(prev => {
+              const updatedHistory = [...prev];
+              updatedHistory[updatedHistory.length - 1] = { timestamp: timestamp, messages: updatedMessages };
+              return updatedHistory;
+            });
           }
         }
         setUserInput("");
@@ -280,6 +309,14 @@
         setSidebarOpen(false);
       };
 
+      // Clear chat history
+      const clearChatHistory = () => {
+        setChatHistory([]);
+        localStorage.removeItem("next1ChatHistory");
+        setShowChatHistory(false);
+        setSidebarOpen(false);
+      };
+
       return (
         <div className={`min-h-screen ${darkMode ? "dark" : ""}`}>
           {/* Hamburger Menu for Mobile */}
@@ -306,8 +343,8 @@
             </div>
             <nav className="p-5 space-y-3">
               <button
-                className="w-full flex items-center p-3 rounded-lg hover:bg-purple-700 dark:hover:bg-purple-800 transition text-base"
-                onClick={() => { setShowProgress(false); setSidebarOpen(false); }}
+                className="w-full flex items-center p-3 rounded-lg hover:bg-purple-7x00 dark:hover:bg-purple-800 transition text-base"
+                onClick={() => { setShowProgress(false); setShowChatHistory(false); setSidebarOpen(false); }}
               >
                 <svg className="w-5 h-5 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5v-4l7-7 4 4 7-7" />
@@ -316,7 +353,7 @@
               </button>
               <button
                 className="w-full flex items-center p-3 rounded-lg hover:bg-purple-700 dark:hover:bg-purple-800 transition text-base"
-                onClick={() => { setShowProgress(false); setSidebarOpen(false); generateDailyTask(); }}
+                onClick={() => { setShowProgress(false); setShowChatHistory(false); setSidebarOpen(false); generateDailyTask(); }}
               >
                 <svg className="w-5 h-5 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -325,7 +362,7 @@
               </button>
               <button
                 className="w-full flex items-center p-3 rounded-lg hover:bg-purple-700 dark:hover:bg-purple-800 transition text-base"
-                onClick={() => { setShowProgress(true); setSidebarOpen(false); }}
+                onClick={() => { setShowProgress(true); setShowChatHistory(false); setSidebarOpen(false); }}
               >
                 <svg className="w-5 h-5 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 8v8m-4-4v4m-4-8v8m8-8v8M4 4h16v16H4V4z" />
@@ -334,10 +371,19 @@
               </button>
               <button
                 className="w-full flex items-center p-3 rounded-lg hover:bg-purple-700 dark:hover:bg-purple-800 transition text-base"
+                onClick={() => { setShowProgress(false); setShowChatHistory(true); setSidebarOpen(false); }}
+              >
+                <svg className="w-5 h-5 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                Chat History
+              </button>
+              <button
+                className="w-full flex items-center p-3 rounded-lg hover:bg-purple-700 dark:hover:bg-purple-800 transition text-base"
                 onClick={() => { setDarkMode(!darkMode); setSidebarOpen(false); }}
               >
                 <svg className="w-5 h-5 mr-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 0118 0z" />
                 </svg>
                 {darkMode ? "Light Mode" : "Dark Mode"}
               </button>
@@ -363,7 +409,7 @@
               )}
 
               {/* Chat Section (Onboarding) */}
-              {!showProgress && !dailyTask && (
+              {!showProgress && !showChatHistory && !dailyTask && (
                 <div className="glass p-8 mb-6 fade-in-scale">
                   <h3 className="text-xl md:text-2xl font-semibold mb-4 text-gray-800 dark:text-gray-200">
                     Chat with Your Coach
@@ -397,7 +443,7 @@
               )}
 
               {/* Daily Task Section */}
-              {!showProgress && dailyTask && (
+              {!showProgress && !showChatHistory && dailyTask && (
                 <div className="glass p-8 mb-6 fade-in-scale">
                   <h3 className="text-xl md:text-2xl font-semibold mb-4 text-gray-800 dark:text-gray-200">
                     Your Daily Task
@@ -433,7 +479,7 @@
               )}
 
               {/* Progress Section */}
-              {showProgress && (
+              {showProgress && !showChatHistory && (
                 <div className="glass p-8 mb-6 fade-in-scale">
                   <h3 className="text-xl md:text-2xl font-semibold mb-4 text-gray-800 dark:text-gray-200">
                     Your Progress
@@ -448,6 +494,39 @@
                     className="bg-red-500 text-white px-6 py-3 rounded-lg hover:bg-red-600 transition transform hover:scale-105 text-lg"
                   >
                     Reset Progress
+                  </button>
+                </div>
+              )}
+
+              {/* Chat History Section */}
+              {showChatHistory && (
+                <div className="glass p-8 mb-6 fade-in-scale">
+                  <h3 className="text-xl md:text-2xl font-semibold mb-4 text-gray-800 dark:text-gray-200">
+                    Chat History
+                  </h3>
+                  {chatHistory.length === 0 ? (
+                    <p className="text-gray-600 dark:text-gray-300 text-lg">No chat history available.</p>
+                  ) : (
+                    chatHistory.map((entry, index) => (
+                      <div key={index} className="mb-5 p-5 bg-white dark:bg-gray-700 rounded-lg">
+                        <p className="text-base text-gray-500 dark:text-gray-400">{entry.timestamp}</p>
+                        <div className="mt-2">
+                          {entry.messages.map((msg, msgIndex) => (
+                            <div key={msgIndex} className={`mb-2 ${msg.sender === "User" ? "text-right" : "text-left"}`}>
+                              <span className={`inline-block p-2 rounded-lg text-lg ${msg.sender === "User" ? "bg-green-200 dark:bg-green-700" : "bg-gray-200 dark:bg-gray-700"}`}>
+                                <strong>{msg.sender}:</strong> {msg.message}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))
+                  )}
+                  <button
+                    onClick={clearChatHistory}
+                    className="bg-red-500 text-white px-6 py-3 rounded-lg hover:bg-red-600 transition transform hover:scale-105 text-lg"
+                  >
+                    Clear Chat History
                   </button>
                 </div>
               )}
